@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🔬 AI Research Lab — Browser ke andar AI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; font-family: system-ui, sans-serif; }
+  body { background: #0b0b14; color: #fff; min-height: 100vh; padding: 18px; max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 24px; text-align: center; }
+  .sub { color: #9a9ab0; text-align: center; font-size: 14px; margin: 6px 0 18px; }
+  .card { background: #171726; border: 1px solid #2a2a40; border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+  .card h2 { font-size: 18px; margin-bottom: 6px; }
+  .tag { display: inline-block; background: #6c4dff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
+  .desc { color: #9a9ab0; font-size: 13px; margin-bottom: 12px; }
+  button { padding: 12px 18px; font-size: 15px; border: 0; border-radius: 12px; background: #6c4dff; color: #fff; font-weight: 600; }
+  button.ghost { background: #262640; font-weight: 400; }
+  button:disabled { opacity: .5; }
+  input[type=text] { width: 100%; padding: 11px; border-radius: 10px; border: 1px solid #2a2a40; background: #0f0f1c; color: #fff; font-size: 15px; margin-bottom: 10px; }
+  input[type=file] { margin-bottom: 10px; color: #9a9ab0; }
+  .status { font-size: 13px; color: #ffd54d; min-height: 18px; margin: 8px 0; }
+  .prog { height: 8px; background: #262640; border-radius: 99px; overflow: hidden; display: none; margin-bottom: 8px; }
+  .prog > div { height: 100%; width: 0%; background: #6c4dff; transition: width .2s; }
+  .out { background: #0f0f1c; border-radius: 10px; padding: 12px; font-size: 15px; min-height: 44px; white-space: pre-wrap; }
+  img.demo { max-width: 100%; border-radius: 10px; display: none; margin-top: 10px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 14px; }
+  .bar-row .lbl { width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .tr { flex: 1; height: 10px; background: #262640; border-radius: 99px; overflow: hidden; }
+  .bar-row .fl { height: 100%; background: #4dff88; }
+  #depthWrap { perspective: 600px; margin-top: 10px; }
+  #depthImg { transition: transform .1s; }
+  .foot { text-align: center; color: #55556e; font-size: 12px; margin: 10px 0 20px; }
+</style>
+</head>
+<body>
+<h1>🔬 AI Research Lab</h1>
+<div class="sub">Ye AI <b>server par nahi, tumhare browser ke andar</b> chalta hai.<br>Model pehli baar download hoga (progress dikhega), phir hamesha ke liye ready.</div>
+
+<div class="card">
+  <h2>🎤 Bolke Likho <span class="tag">Whisper · OpenAI research</span></h2>
+  <div class="desc">Mic me Hindi ya English bolo — AI sunke likh dega. Awaz phone se bahar jaati hi nahi.</div>
+  <button id="micBtn">🎙 Bolna shuru karo</button>
+  <div class="status" id="sttStatus"></div>
+  <div class="prog" id="sttProg"><div></div></div>
+  <div class="out" id="sttOut">…yaha text aayega</div>
+</div>
+
+<div class="card">
+  <h2>🔍 Photo me Khojo <span class="tag">CLIP · zero-shot research</span></h2>
+  <div class="desc">Photo do, aur apne shabd likho (comma se alag). AI bina training ke batayega photo me kya hone ki sabse zyada sambhavna hai — ye "zero-shot" research hai.</div>
+  <input type="file" id="clipFile" accept="image/*">
+  <input type="text" id="clipLabels" value="ek kutta, ek billi, ek ped, ek car, ek insaan">
+  <button id="clipBtn">🔍 Khojo</button>
+  <div class="status" id="clipStatus"></div>
+  <div class="prog" id="clipProg"><div></div></div>
+  <img class="demo" id="clipImg">
+  <div id="clipOut"></div>
+</div>
+
+<div class="card">
+  <h2>🏔️ Photo ka 3D Depth <span class="tag">Depth Anything · 2024 research</span></h2>
+  <div class="desc">Ek aam photo se AI doori ka naksha banata hai — jo paas hai wo safed, jo door hai wo kala. Slider ghumao, photo 3D jaisi hilegi.</div>
+  <input type="file" id="depthFile" accept="image/*">
+  <button id="depthBtn">🏔️ Depth banao</button>
+  <div class="status" id="depthStatus"></div>
+  <div class="prog" id="depthProg"><div></div></div>
+  <div id="depthWrap"><img class="demo" id="depthImg"></div>
+  <input type="range" id="tilt" min="-14" max="14" value="0" style="width:100%; margin-top:10px; display:none">
+</div>
+
+<div class="foot">Teeno model Hugging Face se browser me hi load hote hain (Transformers.js) · Koi server nahi · Koi data bahar nahi jata</div>
+
+<script type="module">
+import { pipeline, env, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/dist/transformers.min.js';
+env.allowLocalModels = false;
+
+function prog(el, statusEl) {
+  return x => {
+    if (x.status === 'progress' && x.total) {
+      el.style.display = 'block';
+      el.firstElementChild.style.width = Math.round(x.loaded / x.total * 100) + '%';
+      statusEl.textContent = `Model download ho raha hai… ${Math.round(x.loaded / x.total * 100)}%`;
+    }
+    if (x.status === 'done') { el.style.display = 'none'; }
+  };
+}
+const $ = id => document.getElementById(id);
+
+// ---------- 1) Whisper: bolke likho ----------
+let stt = null, recorder = null, chunks = [], recording = false;
+$('micBtn').onclick = async () => {
+  if (recording) { recorder.stop(); return; }
+  try {
+    if (!stt) {
+      $('sttStatus').textContent = 'Model load ho raha hai (pehli baar thoda time lagega)…';
+      stt = await pipeline('automatic-speech-recognition', 'Xenova/whisper-base', { progress_callback: prog($('sttProg'), $('sttStatus')) });
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      recording = false; $('micBtn').textContent = '🎙 Bolna shuru karo';
+      $('sttStatus').textContent = 'AI sun raha hai… likh raha hu ✍️';
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const buf = await blob.arrayBuffer();
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      const audio = await ctx.decodeAudioData(buf);
+      const out = await stt(audio.getChannelData(0), { language: 'hindi', task: 'transcribe' });
+      $('sttOut').textContent = out.text || '(kuch samajh nahi aaya — paas se phir bolo)';
+      $('sttStatus').textContent = 'Ho gaya ✓';
+    };
+    recorder.start();
+    recording = true;
+    $('micBtn').textContent = '⏹ Roko (bolna ho gaya)';
+    $('sttStatus').textContent = '🔴 Sun raha hu… bolo!';
+  } catch (e) { $('sttStatus').textContent = '❌ ' + e.message; }
+};
+
+// ---------- 2) CLIP: photo me khojo ----------
+let clip = null;
+$('clipFile').onchange = e => {
+  const f = e.target.files[0];
+  if (f) { $('clipImg').src = URL.createObjectURL(f); $('clipImg').style.display = 'block'; }
+};
+$('clipBtn').onclick = async () => {
+  const f = $('clipFile').files[0];
+  if (!f) { $('clipStatus').textContent = 'Pehle photo chuno'; return; }
+  try {
+    if (!clip) {
+      $('clipStatus').textContent = 'Model load ho raha hai…';
+      clip = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32', { progress_callback: prog($('clipProg'), $('clipStatus')) });
+    }
+    $('clipStatus').textContent = 'AI photo dekh raha hai… 👀';
+    const labels = $('clipLabels').value.split(',').map(s => s.trim()).filter(Boolean);
+    const url = URL.createObjectURL(f);
+    const res = await clip(url, labels);
+    $('clipOut').innerHTML = res.map(r =>
+      `<div class="bar-row"><div class="lbl">${r.label}</div><div class="tr"><div class="fl" style="width:${Math.round(r.score * 100)}%"></div></div><div>${Math.round(r.score * 100)}%</div></div>`).join('');
+    $('clipStatus').textContent = 'Ho gaya ✓ — sabse upar wala sabse sahi guess hai';
+  } catch (e) { $('clipStatus').textContent = '❌ ' + e.message; }
+};
+
+// ---------- 3) Depth Anything ----------
+let depth = null;
+$('depthBtn').onclick = async () => {
+  const f = $('depthFile').files[0];
+  if (!f) { $('depthStatus').textContent = 'Pehle photo chuno'; return; }
+  try {
+    if (!depth) {
+      $('depthStatus').textContent = 'Model load ho raha hai…';
+      depth = await pipeline('depth-estimation', 'Xenova/depth-anything-small-hf', { progress_callback: prog($('depthProg'), $('depthStatus')) });
+    }
+    $('depthStatus').textContent = 'AI doori naap raha hai… 📏';
+    const url = URL.createObjectURL(f);
+    const out = await depth(url);
+    const img = out.depth; // RawImage (grayscale)
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const cx = cv.getContext('2d');
+    const id = cx.createImageData(img.width, img.height);
+    for (let i = 0; i < img.width * img.height; i++) {
+      const v = img.data[i];
+      id.data[i * 4] = v; id.data[i * 4 + 1] = v; id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
+    }
+    cx.putImageData(id, 0, 0);
+    const el = $('depthImg');
+    el.src = cv.toDataURL();
+    el.style.display = 'block';
+    $('tilt').style.display = 'block';
+    $('depthStatus').textContent = 'Ho gaya ✓ — neeche wala slider ghuma ke 3D jhukav dekho';
+  } catch (e) { $('depthStatus').textContent = '❌ ' + e.message; }
+};
+$('tilt').oninput = e => {
+  $('depthImg').style.transform = `rotateY(${e.target.value}deg)`;
+};
+</script>
+</body>
+</html>
